@@ -1,0 +1,302 @@
+{
+  "name": "AI Appointment Booking - Main Booking Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "initialMessages": "Hi there! 👋\n\nI'm Ava, your AI Receptionist.\n\nI can help you book, reschedule, or answer questions about appointments.\n\nHow can I assist you today?",
+        "options": {
+          "responseMode": "lastNode"
+        }
+      },
+      "id": "092b3173-0b31-49ab-930d-2f391f96ca66",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -176,
+        192
+      ],
+      "webhookId": "ai-appointment-booking-chat"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "baseURL": "https://api.groq.com/openai/v1",
+          "temperature": 0.3
+        }
+      },
+      "id": "b2928bb7-845b-447e-9a0f-5c4d5ada1e1e",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        448
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionId }}",
+        "contextWindowLength": 12
+      },
+      "id": "7e2ce580-ead3-4083-8452-1e8f8a6fba55",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        16,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "=You are Ava, a professional, friendly virtual receptionist for a small business. Current date and time (reference for all calculations): {{ $now.toISO() }} in timezone Asia/Karachi.\n\nYour job:\n1. Greet the user warmly and understand if they want to book an appointment.\n2. Collect these details naturally, one or two at a time, never all at once: customer full name, email address, preferred date, preferred time (or general time preference like \"morning\" or \"afternoon\").\n3. Once you have a preferred date, ALWAYS call the get_available_slots tool to check real availability before suggesting or confirming any time. NEVER invent, assume, or guess availability - only rely on tool output.\n4. Present the returned free slots to the user in a clear, human-readable list and let them pick one.\n5. Once the user confirms a slot AND you have their full name and email, call book_slot to create the calendar event.\n6. Immediately after a successful booking, call save_booking_to_database to persist the appointment (use the event id, start time and end time returned by book_slot).\n7. Immediately after saving, call send_confirmation_email to email the customer a confirmation with their name, date, time and timezone.\n8. Only after all three tool calls succeed, reply to the user with a warm, concise confirmation message summarizing the name, date, time and timezone, and let them know a confirmation email is on its way.\n9. If the user does not have an available slot they like, offer to check another date.\n10. If required information (name, email, date, or time) is missing, ask a short clarifying question - do not proceed to tools until you have what you need.\n11. Be concise, warm and professional. Do not discuss internal tool names or technical details with the user.\n12. Never fabricate calendar events, booking confirmations, or email confirmations - these only happen after the corresponding tool actually succeeds."
+        }
+      },
+      "id": "51d3ba1a-5f03-4efa-878e-5f25888a4e83",
+      "name": "AI Receptionist Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        16,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Saves a confirmed appointment into the Supabase appointments table after the calendar event has been created. Call this immediately after book_slot succeeds.",
+        "method": "POST",
+        "url": "=https://YOUR_SUPABASE_URL.supabase.co/rest/v1/appointments",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"appointment_start\": \"2026-07-10T10:00:00Z\",\n  \"appointment_end\": \"2026-07-10T10:30:00Z\",\n  \"calendar_event_id\": \"test123\",\n  \"status\": \"booked\"\n}"
+      },
+      "id": "2f57b82a-d376-421a-bfae-7af10f3dfb66",
+      "name": "save_booking_to_database",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Check the Google Calendar for available appointment slots within the requested date and time range. Use this tool before suggesting or booking any appointment. Never assume availability without calling this tool first.",
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "YOUR_CALENDAR_EMAIL@gmail.com",
+          "mode": "list",
+          "cachedResultName": "YOUR_CALENDAR_EMAIL@gmail.com"
+        },
+        "timeMin": "={{ $fromAI('timeMin', 'ISO 8601 UTC start of search window', 'string') }}",
+        "timeMax": "={{ $fromAI('timeMax', 'ISO 8601 UTC end of search window', 'string') }}",
+        "options": {
+          "orderBy": "startTime"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        160,
+        464
+      ],
+      "id": "0e4260f9-0477-4704-b72f-c8a45896778b",
+      "name": "Get_available-slots",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "YOUR_GOOGLE_CALENDAR_CREDENTIAL_ID",
+          "name": "Google Calendar OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "YOUR_CALENDAR_EMAIL@gmail.com",
+          "mode": "list",
+          "cachedResultName": "YOUR_CALENDAR_EMAIL@gmail.com"
+        },
+        "start": "={{ $fromAI('startDateTime', 'ISO 8601 UTC start datetime of the confirmed appointment slot', 'string') }}",
+        "end": "={{ $fromAI('endDateTime', 'ISO 8601 UTC end datetime of the confirmed appointment slot', 'string') }}",
+        "additionalFields": {
+          "attendees": [
+            "={{ $fromAI('customerEmail', 'Customer email address', 'string') }}"
+          ],
+          "description": "=Booked via AI Appointment Booking Assistant.\n\nCustomer Name:\n{{ $fromAI('customerName', 'Customer full name', 'string') }}\n\nCustomer Email:\n{{ $fromAI('customerEmail', 'Customer email address', 'string') }}\n\nBooked using n8n AI Receptionist.",
+          "summary": "=AI Appointment – {{ $fromAI('customerName', 'Customer full name', 'string') }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        304,
+        464
+      ],
+      "id": "0cd49c6f-e594-4dd5-9ccb-0d3256becb76",
+      "name": "book_slot1",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "YOUR_GOOGLE_CALENDAR_CREDENTIAL_ID",
+          "name": "Google Calendar OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Send a message in GmailSend an appointment confirmation email to the customer after the booking has been successfully created in Google Calendar and saved to the database.",
+        "sendTo": "={{ $fromAI('customerEmail', 'Customer email address', 'string') }}",
+        "subject": "Appointment Confirmed",
+        "message": "=<p>Hi {{ $fromAI('customerName', 'Customer full name', 'string') }},</p>\n\n<p>Your appointment has been <strong>confirmed</strong>.</p>\n\n<p><strong>Date:</strong> {{ $fromAI('appointmentDate', 'Human readable appointment date', 'string') }}<br/>\n\n<strong>Time:</strong> {{ $fromAI('appointmentTime', 'Human readable appointment time range', 'string') }}<br/>\n\n<strong>Timezone:</strong> {{ $fromAI('timezone', 'Appointment timezone', 'string') }}</p>\n\n<p>We look forward to seeing you.</p>\n\n<p>Best regards,<br/>Ava – AI Appointment Booking Assistant</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        400
+      ],
+      "id": "b9c00e4b-06c0-4be7-9490-86764ff0e5e1",
+      "name": "send confirmation email",
+      "webhookId": "f4f66fd8-8079-4d78-b943-6a585df55281",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Receptionist Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Receptionist Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Receptionist Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "save_booking_to_database": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Receptionist Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_available-slots": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Receptionist Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "book_slot1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Receptionist Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send confirmation email": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Receptionist Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "367a5b9f-a8e1-4136-a07b-5736f4187ba7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "57ae7a1b35192c9cfff921133accc8025fb502a186c0a216fe498d872314e2c4"
+  },
+  "nodeGroups": [],
+  "id": "oiOeOwFBUaPWbTHQ",
+  "tags": []
+}
