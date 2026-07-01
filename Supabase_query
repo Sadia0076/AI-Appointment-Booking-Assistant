@@ -1,0 +1,39 @@
+-- ============================================================
+-- AI Appointment Booking Assistant Database Schema
+-- ============================================================
+
+-- Enable UUID generation
+create extension if not exists "pgcrypto";
+
+-- Create appointments table
+create table if not exists public.appointments (
+    id uuid primary key default gen_random_uuid(),
+
+    customer_name text not null,
+    email text not null,
+
+    appointment_start timestamptz not null,
+    appointment_end timestamptz not null,
+
+    calendar_event_id text,
+
+    status text not null default 'booked',
+
+    reminder_24h_sent boolean not null default false,
+    reminder_1h_sent boolean not null default false,
+
+    created_at timestamptz not null default now()
+);
+
+-- Indexes
+create index if not exists idx_appointments_start
+on public.appointments (appointment_start);
+
+create index if not exists idx_appointments_status
+on public.appointments (status);
+
+create index if not exists idx_appointments_calendar_event
+on public.appointments (calendar_event_id);
+
+-- Disable Row Level Security for learning
+alter table public.appointments disable row level security;
