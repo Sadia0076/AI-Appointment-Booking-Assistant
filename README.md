@@ -2,7 +2,7 @@
 ### End-to-End AI Receptionist built with n8n, OpenAI, Google Calendar, Supabase & Gmail
 
 > 🎥 **Live Project Demo (Loom Video):**  
-> **➡️ Add your Loom link here:** `https://www.loom.com/share/0dcb078fb57a46bebf39f5d50889d534`
+> **➡️ Add your Loom link here:** [https://www.loom.com/share/0dcb078fb57a46bebf39f5d50889d534]
 
 ---
 
